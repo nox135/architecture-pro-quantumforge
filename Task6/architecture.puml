@@ -1,0 +1,81 @@
+@startuml
+title Архитектура автоматического обновления базы знаний
+
+package "Источник данных" {
+    component "Task2/knowledge_base/\n*.txt файлы" as KnowledgeBase
+}
+
+package "Скрипт обновления" {
+    component "update_index.py" as UpdateScript
+    component "Сканирование файлов" as Scan
+    component "Разбиение на чанки" as Chunking
+    component "Генерация эмбеддингов" as Embeddings
+    component "Обновление индекса" as UpdateIndex
+    component "Логирование" as Logging
+}
+
+package "Векторная БД" {
+    component "ChromaDB\n(star_wars_knowledge_base)" as ChromaDB
+}
+
+package "Модель эмбеддингов" {
+    component "BGE-base-en-v1.5" as EmbeddingModel
+}
+
+package "Планировщик" {
+    component "Cron/Task Scheduler" as Scheduler
+}
+
+package "Логи" {
+    component "logs/\nupdate_index_*.log\nupdate_result_*.json" as Logs
+}
+
+package "Состояние" {
+    component "update_state.json" as StateFile
+}
+
+' Поток данных
+KnowledgeBase --> Scan : Сканирование новых/измененных файлов
+Scan --> Chunking : Загрузка документов
+Chunking --> Embeddings : Разбиение на чанки
+Embeddings --> EmbeddingModel : Генерация векторов
+EmbeddingModel --> UpdateIndex : Эмбеддинги
+UpdateIndex --> ChromaDB : Добавление/обновление чанков
+UpdateIndex --> StateFile : Сохранение состояния
+UpdateIndex --> Logging : Запись результатов
+Logging --> Logs : Сохранение логов
+
+' Планировщик
+Scheduler --> UpdateScript : Запуск по расписанию\n(ежедневно в 6:00)
+UpdateScript --> Scan
+
+' Метаданные
+Chunking ..> ChromaDB : Метаданные:\n- source\n- filename\n- title\n- chunk_index\n- total_chunks
+
+note right of UpdateScript
+  Процесс обновления:
+  1. Сканирование источника
+  2. Поиск новых/измененных файлов
+  3. Разбиение на чанки
+  4. Генерация эмбеддингов
+  5. Обновление индекса
+  6. Логирование
+end note
+
+note right of Scheduler
+  Варианты запуска:
+  - Windows: Task Scheduler
+  - Linux/macOS: Cron
+  - Docker: встроенный планировщик
+end note
+
+note right of Logs
+  Логи содержат:
+  - Время запуска/завершения
+  - Количество новых чанков
+  - Размер индекса
+  - Ошибки (если были)
+end note
+
+@enduml
+
