@@ -1,0 +1,23 @@
+# Зависимости для RAG-бота
+sentence-transformers>=2.2.0
+chromadb>=0.4.0
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-text-splitters>=0.0.1
+tqdm>=4.66.0
+numpy>=1.24.0
+torch>=2.0.0
+
+# FastAPI и веб-сервер
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# Requests для YandexGPT API
+requests>=2.31.0
+
+# Загрузка переменных окружения из .env
+python-dotenv>=1.0.0
+
+
+

@@ -1,0 +1,134 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowThickness 2
+skinparam roundcorner 20
+skinparam maxmessagesize 60
+
+title Диаграмма последовательности: Обработка запроса и оценка качества RAG-бота
+
+actor Пользователь
+participant "Скрипт\nтестирования" as TestScript
+participant "RAG Engine" as RAGEngine
+participant "Logger" as Logger
+participant "Embedding\nModel" as EmbedModel
+participant "ChromaDB\n(Векторная БД)" as ChromaDB
+participant "YandexGPT\n(LLM)" as LLM
+participant "Анализатор\nлогов" as Analyzer
+
+== Инициализация ==
+Пользователь -> TestScript: Запуск evaluate.py
+activate TestScript
+TestScript -> RAGEngine: Инициализация
+activate RAGEngine
+RAGEngine -> EmbedModel: Загрузка модели эмбеддингов
+activate EmbedModel
+EmbedModel --> RAGEngine: Модель загружена
+RAGEngine -> ChromaDB: Подключение к БД
+activate ChromaDB
+ChromaDB --> RAGEngine: Подключено
+TestScript -> Logger: Инициализация
+activate Logger
+deactivate Logger
+
+== Обработка запроса ==
+TestScript -> TestScript: Загрузка золотых вопросов
+TestScript -> TestScript: Для каждого вопроса:
+
+loop Для каждого вопроса
+    TestScript -> RAGEngine: query(question)
+    activate RAGEngine
+    
+    == Поиск релевантных чанков ==
+    RAGEngine -> EmbedModel: encode(question)
+    activate EmbedModel
+    EmbedModel --> RAGEngine: query_embedding
+    deactivate EmbedModel
+    
+    RAGEngine -> ChromaDB: query(query_embedding, top_k)
+    activate ChromaDB
+    
+    alt Чанки найдены
+        ChromaDB --> RAGEngine: chunks[] с метаданными
+        note right: Успешный поиск
+    else Чанки не найдены
+        ChromaDB --> RAGEngine: пустой список
+        note right: Пробел в базе знаний
+        RAGEngine --> TestScript: {"answer": "Я не знаю", "chunks": []}
+        deactivate RAGEngine
+        deactivate ChromaDB
+    end
+    
+    deactivate ChromaDB
+    
+    == Генерация ответа ==
+    alt Чанки найдены
+        RAGEngine -> RAGEngine: _build_prompt(question, chunks)
+        note right: Формирование промпта\nс контекстом и few-shot примерами
+        
+        RAGEngine -> LLM: _call_llm(prompt)
+        activate LLM
+        
+        alt Успешная генерация
+            LLM --> RAGEngine: answer
+            note right: Ответ сгенерирован
+        else Ошибка LLM
+            LLM --> RAGEngine: Exception
+            note right: Сбой генерации
+            RAGEngine --> TestScript: {"answer": "Ошибка", ...}
+            deactivate RAGEngine
+            deactivate LLM
+        end
+        
+        deactivate LLM
+        RAGEngine --> TestScript: {"answer": answer, "chunks": chunks, "reasoning": ...}
+    end
+    
+    deactivate RAGEngine
+    
+    == Логирование ==
+    TestScript -> TestScript: evaluate_answer(question, answer, chunks, should_answer)
+    note right: Оценка корректности ответа
+    
+    TestScript -> Logger: log_query(query, answer, chunks, ...)
+    activate Logger
+    Logger -> Logger: _evaluate_success()
+    note right: Определение успешности\nпо критериям
+    Logger -> Logger: Запись в logs.jsonl
+    Logger --> TestScript: log_entry
+    deactivate Logger
+    
+    TestScript -> TestScript: Сохранение результата
+end
+
+== Анализ результатов ==
+TestScript -> TestScript: Подсчет статистики
+TestScript -> TestScript: Сохранение evaluation_results.json
+
+== Анализ логов ==
+Пользователь -> Analyzer: Запуск analyze_logs.py
+activate Analyzer
+Analyzer -> Logger: Загрузка logs.jsonl
+activate Logger
+Logger --> Analyzer: Все записи лога
+deactivate Logger
+
+Analyzer -> Analyzer: Анализ статистики
+note right: Выявление пробелов\nпо категориям
+
+Analyzer -> Analyzer: Генерация отчета
+Analyzer --> Пользователь: analysis_report.txt
+deactivate Analyzer
+
+== Точки возможных сбоев ==
+note over ChromaDB
+    **Точки сбоя:**
+    1. Пустой индекс - нет данных для поиска
+    2. Невалидный чанк - поврежденные данные
+    3. Ошибка эмбеддингов - проблема с моделью
+    4. Ошибка LLM - недоступность API
+    5. Нерелевантные чанки - низкое качество поиска
+end note
+
+@enduml
+
